@@ -1,0 +1,7 @@
+5
+t01 hello 100000
+t02 world 100000
+t03 operating_systems 150000
+t04 pthreads_are_fun 200000
+t05 cs_undergrad 120000
+
