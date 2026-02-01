@@ -50,7 +50,7 @@ typedef uint32_t Time_t;
  *   *out_timeout_ms receives the parsed timeout in milliseconds (or default)
  *
  * Behavior:
- *   - Default timeout if not provided: 10000 (10s).
+ *   - Default timeout if not provided: 5000 (5s).
  *   - If arguments are malformed or an unknown flag is given, this function
  *     will print an error and terminate the program (via Die/Dief).
  *   - The function does not return an error code by design; callers may assume
