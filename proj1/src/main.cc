@@ -9,11 +9,28 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include <stdint.h>
 
 // Portable Operating System Interface (POSIX)
 #include <unistd.h>
 
+
+/*  Example Interaction
+ * ./proj1 --all --timeout 3000 < data/small.txt
+ * Enter max threads (1 - 8) : 4
+ * THREAD OUTPUT :: 'started' , 'returned' , 'completed' , etc
+ */
+
+// static int that corresponds to the max k threads the user selected
 static int max_threads;
+
+/*
+ * static int to hold the different mode the threads should be released in
+ * 0 == hold
+ * 1 == all
+ * 2 == rate
+ * 3 == thread
+ */
 static volatile int release_threads;
 
 // struct to store the input from the file
@@ -40,10 +57,10 @@ void *worker(void *arg) {
     }
 
     // threads in thread pool must sleep until specific
-    while (release_threads == 0) {
-        Timings_SleepMs(1000);
-        printf("slept");
-    }
+    // while (release_threads == 0) {
+    //     printf("slept\n");
+    //     // Timings_SleepMs(3000);
+    // }
 
     printf("id: %d\n", info->id);
 
@@ -51,6 +68,12 @@ void *worker(void *arg) {
 }
 
 int main(int argc, char *argv[]) {
+    // parse argv to separate potential flags
+    CliMode mode;
+    uint32_t timeout_ms;  // default timeout is 10,000 (10s)
+    CliParse(argc, argv, &mode, &timeout_ms);
+    printf("mode: %u, timeout: %d\n", mode, timeout_ms);
+
     // capture the number of tasks which is the first row in the piped input file
     int n;
     std::cin >> n;
@@ -91,6 +114,8 @@ int main(int argc, char *argv[]) {
         info[i].id = i + 1;  // threads are indexed starting at 1
         pthread_create(&threads[i], NULL, worker, &info[i]);
     }
+
+    release_threads = 1;
 
 
     //
