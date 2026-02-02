@@ -117,9 +117,13 @@ int main(int argc, char *argv[]) {
     int n;
     std::cin >> n;
 
+    // keep track of the tasks that we process from the input file
+    int tot_tasks;
+
     // take row input from the piped input file
     for (int i=0; i < n; ++i) {
         std::cin >> info[i].task.id >> info[i].task.name >> info[i].task.amount;
+        tot_tasks++;
     }
 
     // after reading all the input from STDIN (via I/O redirect from a file), prompts the user
@@ -136,14 +140,33 @@ int main(int argc, char *argv[]) {
     }
     // max_threads = 5;
 
-    // update the exec_mode
+    // // update the exec_mode
+    // for (int i = 0; i < online_threads; ++i) {
+    //     if (i < max_threads && i < tot_tasks) {
+    //         info[i].exec_mode = mode;
+    //     } else {
+    //         info[i].exec_mode = -2;  // tell the thread to exit immediately
+    //     }
+    // }
+
+    // release the threads depending on the mode selected
     for (int i = 0; i < online_threads; ++i) {
-        if (i < max_threads) {
-            info[i].exec_mode = mode;
-        } else {
-            info[i].exec_mode = -2;  // tell the thread to exit immediately
+        if (max_threads <= i || tot_tasks <= i) {
+            info[i].exec_mode = -2;
+        } else if (mode == 0) {  // flag: --all
+            info[i].exec_mode = 0;
+        } else if (mode == 1) {  // flag: --rate
+            Timings_SleepMs(1);  // stops threads from releasing by 1 Ms
+            info[i].exec_mode = 0;
+        } else if (mode == 2) {  // flag: --thread
+            if (i > 0)   // immediately release the first thread, but wait for it to return before firing next
+                pthread_join(threads[i-1], NULL);  // wait for prev thread to complete
+            info[i].exec_mode == 0;
+
         }
+
     }
+
 
 
 
