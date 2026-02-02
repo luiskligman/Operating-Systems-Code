@@ -59,7 +59,7 @@ void *worker(void *arg) {
     // threads in thread pool must sleep until specific
     while (info->exec_mode == -1) {
         //printf("slept\n");
-        Timings_SleepMs(3000);
+        Timings_SleepMs(5);
     }
 
     // threads with -2 exec_mode must exit immediately
@@ -82,7 +82,7 @@ void *worker(void *arg) {
             info->out_hex);
     }
 
-    printf("[thread %d] completed row %d\n", info->id, info->task.id);
+    printf("[thread %d] completed row %s\n", info->id, info->task.id.c_str());
 
     //printf("id: %d, sha256_output: %s\n", info->id, info->out_hex);
 
@@ -125,7 +125,7 @@ int main(int argc, char *argv[]) {
     // after reading all the input from STDIN (via I/O redirect from a file), prompts the user
     // (via dev/tty) for a number, k, of threads to use for this execution
     // std::cerr << "Enter max threads (1 - %d): \n", online_threads;
-    printf("Enter max threads (1 - %d): \n", online_threads);
+    printf("Enter max threads (1 - %ld): \n", online_threads);
     std::ifstream tty_in("/dev/tty");
     // if (tty_in) {
     //     int var;
@@ -145,16 +145,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf("Thread       Start       Encryption");
-    for (int i = 0; i < max_threads; ++i) {
-        printf("%d           %s          %s\n",
-            info[i].id, info[i].task.name, info[i].out_hex);
-    }
-
-
-
-
-
 
 
     //
@@ -167,6 +157,12 @@ int main(int argc, char *argv[]) {
     // make sure all threads are complete (using join)
     for (int i = 0; i < online_threads; i++) {
         pthread_join(threads[i], NULL);  // waits for the thread to complete
+    }
+
+    printf("Thread       Start       Encryption\n");
+    for (int i = 0; i < max_threads; ++i) {
+        printf("%d           %s          %s\n",
+            info[i].id, info[i].task.name.c_str(), info[i].out_hex);
     }
 
     return 0;
