@@ -45,7 +45,11 @@ struct thread_info {
      * 1 == rate
      * 2 == thread
      */
+
     Task task;
+
+    // initialize output char vector
+    char out_hex[65] = {0};
 };
 
 // the work that each thread will perform
@@ -60,17 +64,12 @@ void *worker(void *arg) {
 
     // threads with -2 exec_mode must exit immediately
     if (info->exec_mode == -2) {
+        printf("[thread %d] returned\n", info->id);
         return NULL;
     }
 
-    // too many threads spun compared to users max threads value
-    if (max_threads < info->id) {
-        printf("id greater than max_threads: %d\n", info->id);
-        return NULL;
-    }
+    printf("[thread %d] started\n", info->id);
 
-    // initialize output char vector
-    char out_hex[65] = {0};
 
     // if exec_mode == 0 (--all) fire the thread as soon as this is reached
     // no hold necessary
@@ -80,11 +79,12 @@ void *worker(void *arg) {
             reinterpret_cast<const uint8_t*>(info->task.name.data()),
             info->task.name.size(),
             info->task.amount,
-            out_hex);
+            info->out_hex);
     }
 
+    printf("[thread %d] completed row %d\n", info->id, info->task.id);
 
-    printf("id: %d, sha256_output: %s\n", info->id, out_hex);
+    //printf("id: %d, sha256_output: %s\n", info->id, info->out_hex);
 
     return NULL;
 }
@@ -124,7 +124,8 @@ int main(int argc, char *argv[]) {
 
     // after reading all the input from STDIN (via I/O redirect from a file), prompts the user
     // (via dev/tty) for a number, k, of threads to use for this execution
-    std::cerr << "enter how many k threads you wish to use for this execution\n";
+    // std::cerr << "Enter max threads (1 - %d): \n", online_threads;
+    printf("Enter max threads (1 - %d): \n", online_threads);
     std::ifstream tty_in("/dev/tty");
     // if (tty_in) {
     //     int var;
@@ -143,6 +144,13 @@ int main(int argc, char *argv[]) {
             info[i].exec_mode = -2;  // tell the thread to exit immediately
         }
     }
+
+    printf("Thread       Start       Encryption");
+    for (int i = 0; i < max_threads; ++i) {
+        printf("%d           %s          %s\n",
+            info[i].id, info[i].task.name, info[i].out_hex);
+    }
+
 
 
 
