@@ -134,7 +134,7 @@ int main(int argc, char *argv[]) {
 
     // release the threads depending on the mode selected
     for (int i = 0; i < online_threads; ++i) {
-        if (max_threads <= i || n <= i) {
+        if (i >= max_threads || i >= n) {
             info[i].exec_mode = -1;
         } else if (mode == 0) {  // flag: --all
             info[i].task = tasks[i];  // assign the task to thread
@@ -144,21 +144,22 @@ int main(int argc, char *argv[]) {
             info[i].task = tasks[i];  // assign the task to thread
             info[i].exec_mode = 1;
         } else if (mode == 2) {  // flag: --thread
-            if (i > 0)   // immediately release the first thread, but wait for it to return before firing next
-                pthread_join(threads[i-1], NULL);  // wait for prev thread to complete
             info[i].task = tasks[i];  // assign the task to thread
             info[i].exec_mode = 1;
+            pthread_join(threads[i], NULL);  // wait for thread to return
 
         }
     }
 
     // make sure all threads are complete (using join)
-    for (int i = 0; i < online_threads; i++) {
-        pthread_join(threads[i], NULL);  // waits for the thread to complete
+    if (mode == 0 || mode == 1) {
+        for (int i = 0; i < online_threads; i++) {
+            pthread_join(threads[i], NULL);  // waits for the thread to complete
+        }
     }
 
     printf("Thread       Start       Encryption\n");
-    for (int i = 0; i < max_threads; ++i) {
+    for (int i = 0; i < n; ++i) {
         printf("%d           %s          %s\n",
             info[i].id, info[i].task.name.c_str(), info[i].out_hex);
     }
