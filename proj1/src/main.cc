@@ -35,15 +35,13 @@ struct Task {
 
 // struct to properly store info relating to each thread
 // struct allows user to quickly add fields / remove fields
-struct thread_info {
+struct Thread_info {
     int id;
     volatile int exec_mode;
     /*
-     * -2 == exit
-     * -1 == sleep
-     * 0 == all
-     * 1 == rate
-     * 2 == thread
+     * negative values :: exit
+     * zero :: sleep (wait)
+     * positive values :: execute
      */
 
     Task task;
@@ -54,16 +52,16 @@ struct thread_info {
 
 // the work that each thread will perform
 void *worker(void *arg) {
-    thread_info* info = static_cast<thread_info*>(arg);
+    Thread_info* info = static_cast<Thread_info*>(arg);
 
-    // threads in thread pool must sleep until specific
-    while (info->exec_mode == -1) {
+    // threads in thread pool must sleep until exec_mode != 0
+    while (info->exec_mode == 0) {
         //printf("slept\n");
         Timings_SleepMs(5);
     }
 
-    // threads with -2 exec_mode must exit immediately
-    if (info->exec_mode == -2) {
+    // threads with negative exec_mode must exit immediately
+    if (info->exec_mode < 0) {
         printf("[thread %d] returned\n", info->id);
         return NULL;
     }
@@ -71,9 +69,8 @@ void *worker(void *arg) {
     printf("[thread %d] started\n", info->id);
 
 
-    // if exec_mode == 0 (--all) fire the thread as soon as this is reached
-    // no hold necessary
-    if (info->exec_mode == 0) {
+    // execute tasks if exec_mode is positive
+    if (info->exec_mode > 0) {
         // .data() will point to the seed bytes as requested by function definition
         ComputeIterativeSha256Hex(
             reinterpret_cast<const uint8_t*>(info->task.name.data()),
@@ -83,8 +80,6 @@ void *worker(void *arg) {
     }
 
     printf("[thread %d] completed row %s\n", info->id, info->task.id.c_str());
-
-    //printf("id: %d, sha256_output: %s\n", info->id, info->out_hex);
 
     return NULL;
 }
@@ -97,12 +92,12 @@ int main(int argc, char *argv[]) {
     // create two separate vectors the size of the number of online_threads
     // keep track of threads and accompanying info
     std::vector<pthread_t> threads(online_threads);
-    std::vector<thread_info> info(online_threads);
+    std::vector<Thread_info> info(online_threads);
 
     // spin up threads
     for (int i = 0; i < online_threads; i++) {
         info[i].id = i + 1;  // threads are indexed starting at 1
-        info[i].exec_mode = -1;  // make sure all threads know how they should execute
+        info[i].exec_mode = 0;  // make sure all threads know how they should execute
         pthread_create(&threads[i], NULL, worker, &info[i]);
     }
 
@@ -118,12 +113,14 @@ int main(int argc, char *argv[]) {
     std::cin >> n;
 
     // keep track of the tasks that we process from the input file
-    int tot_tasks;
+    int tot_tasks = 0;
+
+    // create a vector of tasks
+    std::vector<Task> tasks(n);
 
     // take row input from the piped input file
     for (int i=0; i < n; ++i) {
-        std::cin >> info[i].task.id >> info[i].task.name >> info[i].task.amount;
-        tot_tasks++;
+        std::cin >> tasks[i].id >> tasks[i].name >> tasks[i].amount;
     }
 
     // after reading all the input from STDIN (via I/O redirect from a file), prompts the user
@@ -131,51 +128,29 @@ int main(int argc, char *argv[]) {
     // std::cerr << "Enter max threads (1 - %d): \n", online_threads;
     printf("Enter max threads (1 - %ld): \n", online_threads);
     std::ifstream tty_in("/dev/tty");
-    // if (tty_in) {
-    //     int var;
-    //     tty_in >> var;
-    // }
     if (tty_in) {
         tty_in >> max_threads;
     }
-    // max_threads = 5;
-
-    // // update the exec_mode
-    // for (int i = 0; i < online_threads; ++i) {
-    //     if (i < max_threads && i < tot_tasks) {
-    //         info[i].exec_mode = mode;
-    //     } else {
-    //         info[i].exec_mode = -2;  // tell the thread to exit immediately
-    //     }
-    // }
 
     // release the threads depending on the mode selected
     for (int i = 0; i < online_threads; ++i) {
-        if (max_threads <= i || tot_tasks <= i) {
-            info[i].exec_mode = -2;
+        if (max_threads <= i || n <= i) {
+            info[i].exec_mode = -1;
         } else if (mode == 0) {  // flag: --all
-            info[i].exec_mode = 0;
+            info[i].task = tasks[i];  // assign the task to thread
+            info[i].exec_mode = 1;
         } else if (mode == 1) {  // flag: --rate
             Timings_SleepMs(1);  // stops threads from releasing by 1 Ms
-            info[i].exec_mode = 0;
+            info[i].task = tasks[i];  // assign the task to thread
+            info[i].exec_mode = 1;
         } else if (mode == 2) {  // flag: --thread
             if (i > 0)   // immediately release the first thread, but wait for it to return before firing next
                 pthread_join(threads[i-1], NULL);  // wait for prev thread to complete
-            info[i].exec_mode == 0;
+            info[i].task = tasks[i];  // assign the task to thread
+            info[i].exec_mode = 1;
 
         }
-
     }
-
-
-
-
-    //
-    // pthread_t p1;
-    // thread_info info;
-    // info.id = 1;
-    // pthread_create(&p1, NULL, worker, &info);
-
 
     // make sure all threads are complete (using join)
     for (int i = 0; i < online_threads; i++) {
