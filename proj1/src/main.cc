@@ -134,7 +134,7 @@ int main(int argc, char *argv[]) {
 
     // release the threads depending on the mode selected
     for (int i = 0; i < online_threads; ++i) {
-        if (i >= max_threads || i >= n) {
+        if (i >= max_threads || i >= n) {  // return thread
             info[i].exec_mode = -1;
         } else if (mode == 0) {  // flag: --all
             info[i].task = tasks[i];  // assign the task to thread
