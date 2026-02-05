@@ -17,8 +17,8 @@
 
 /*  Example Interaction
  * ./proj1 --all --timeout 3000 < data/small.txt
- * Enter max threads (1 - 8) : 4
- * THREAD OUTPUT :: 'started' , 'returned' , 'completed' , etc
+ * Enter max threads (1-8): 4
+ * THREAD OUTPUT :: 'started', 'returned', 'completed', etc.
  */
 
 // static int that corresponds to the max k threads the user selected
@@ -44,10 +44,15 @@ struct Thread_info {
      * positive values :: execute
      */
 
-    Task task;
+    int max_threads;  // user selected number of threads
+    int nrows;  // number of tasks
+    Task* tasks;  // pointer to the vector of tasks
+    std::string* results;  // pointer to results array
 
-    // initialize output char vector
-    char out_hex[65] = {0};
+    uint32_t timeout_ms;
+    uint64_t start_time_ms;
+
+    Thread_info* next_thread;
 };
 
 // the work that each thread will perform
@@ -57,7 +62,7 @@ void *worker(void *arg) {
     // threads in thread pool must sleep until exec_mode != 0
     while (info->exec_mode == 0) {
         //printf("slept\n");
-        Timings_SleepMs(5);
+        Timings_SleepMs(1);
     }
 
     // threads with negative exec_mode must exit immediately
@@ -66,21 +71,49 @@ void *worker(void *arg) {
         return NULL;
     }
 
-    printf("[thread %d] started\n", info->id);
+    ThreadLog("[thread %d] started\n", info->id);
 
+    // record when thread starts work
+    uint64_t start_time = Timings_NowMs();
 
-    // execute tasks if exec_mode is positive
-    if (info->exec_mode > 0) {
-        // .data() will point to the seed bytes as requested by function definition
+    int thread_index = info->id - 1;  // convert to 0 based for array access
+
+    // thread i (1-indexed) processes rows: i-1, (i-1)+k, (i-1)+2k
+    // treat the task array as 0 indexed
+    for (int r = 0; r * info->max_threads + thread_index < info->nrows; r++) {
+
+        const int row_index = thread_index + r * info->max_threads;
+
+        // Check timeout before processing each row
+        if (Timings_NowMs() - start_time > info->timeout_ms) {
+            ThreadLog("[thread %d] timeout\n", info->id);
+            ThreadLog("[thread %d] returned\n", info->id);
+            return NULL;
+        }
+
+        // Get the task at this row
+        Task* task = &info->tasks[row_index];
+
+        // Compute the sha256 hash
+        char hex_output[65] = {0};
         ComputeIterativeSha256Hex(
-            reinterpret_cast<const uint8_t*>(info->task.name.data()),
-            info->task.name.size(),
-            info->task.amount,
-            info->out_hex);
+            reinterpret_cast<const uint8_t*>(task->name.data()),
+            task->name.size(),
+            task->amount,
+            hex_output);
+
+
+        info->results[row_index] = hex_output;
+
+        ThreadLog("[thread %d] completed row %d\n", info->id, row_index);
+
     }
 
-    printf("[thread %d] completed row %s\n", info->id, info->task.id.c_str());
+    // release next
+    if (info->exec_mode == 3 && info->next_thread != NULL)
+        info->next_thread->exec_mode = 3;
 
+    ThreadLog("[thread %d] returned\n", info->id);
     return NULL;
 }
 
@@ -94,13 +127,6 @@ int main(int argc, char *argv[]) {
     std::vector<pthread_t> threads(online_threads);
     std::vector<Thread_info> info(online_threads);
 
-    // spin up threads
-    for (int i = 0; i < online_threads; i++) {
-        info[i].id = i + 1;  // threads are indexed starting at 1
-        info[i].exec_mode = 0;  // make sure all threads know how they should execute
-        pthread_create(&threads[i], NULL, worker, &info[i]);
-    }
-
     // parse argv to separate potential flags
     CliMode mode;
     uint32_t timeout_ms;  // default timeout is 5,000 (5s)
@@ -112,11 +138,14 @@ int main(int argc, char *argv[]) {
     int n;
     std::cin >> n;
 
-    // keep track of the tasks that we process from the input file
-    int tot_tasks = 0;
+    // create a vector of results
+    std::vector<std::string> results(n);
 
     // create a vector of tasks
     std::vector<Task> tasks(n);
+
+    // record global start time
+    uint64_t global_start = Timings_NowMs();
 
     // take row input from the piped input file
     for (int i=0; i < n; ++i) {
@@ -125,43 +154,65 @@ int main(int argc, char *argv[]) {
 
     // after reading all the input from STDIN (via I/O redirect from a file), prompts the user
     // (via dev/tty) for a number, k, of threads to use for this execution
-    // std::cerr << "Enter max threads (1 - %d): \n", online_threads;
     printf("Enter max threads (1 - %ld): \n", online_threads);
     std::ifstream tty_in("/dev/tty");
     if (tty_in) {
         tty_in >> max_threads;
     }
 
-    // release the threads depending on the mode selected
-    for (int i = 0; i < online_threads; ++i) {
-        if (i >= max_threads || i >= n) {  // return thread
-            info[i].exec_mode = -1;
-        } else if (mode == 0) {  // flag: --all
-            info[i].task = tasks[i];  // assign the task to thread
-            info[i].exec_mode = 1;
-        } else if (mode == 1) {  // flag: --rate
-            Timings_SleepMs(1);  // stops threads from releasing by 1 Ms
-            info[i].task = tasks[i];  // assign the task to thread
-            info[i].exec_mode = 1;
-        } else if (mode == 2) {  // flag: --thread
-            info[i].task = tasks[i];  // assign the task to thread
-            info[i].exec_mode = 1;
-            pthread_join(threads[i], NULL);  // wait for thread to return
+    // initialize all threads with shared data
+    for (int i = 0; i < online_threads; i++) {
+        info[i].id = i + 1;
+        info[i].exec_mode = 0;
+        info[i].max_threads = max_threads;
+        info[i].nrows = n;
+        info[i].tasks = tasks.data();  // pointer to task 0 in the array
+        info[i].results = results.data();  // pointer to result 0 in the array
+        info[i].timeout_ms = timeout_ms;
+        info[i].start_time_ms = global_start;
+        info[i].next_thread = (i + 1 < online_threads ? &info[i + 1] : NULL);
 
-        }
+        pthread_create(&threads[i], NULL, worker, &info[i]);
     }
 
-    // make sure all threads are complete (using join)
-    if (mode == 0 || mode == 1) {
+    // release the threads depending on the chosen mode
+    if (mode == 0) {  // --all: release all max_threads at once
         for (int i = 0; i < online_threads; i++) {
-            pthread_join(threads[i], NULL);  // waits for the thread to complete
+            if (i < max_threads && i < n)
+                info[i].exec_mode = 1;
+            else
+                info[i].exec_mode = -1;
+        }
+    } else if (mode == 1) {  // --rate: release on thread per millisecond
+        for (int i = 0; i < online_threads; i++) {
+            if (i < max_threads && i < n) {
+                info[i].exec_mode = 2;
+                Timings_SleepMs(1);
+            } else
+                info[i].exec_mode = -1;
+        }
+    } else if (mode == 2) {  // --thread: each thread releases the next
+        // Release only the first thread; it will release the next
+        for (int i = 0; i < online_threads; i++) {
+            if (i == 0 && i < max_threads && i < n)
+                info[i].exec_mode = 3;
+            else if (i >= max_threads || i >= n)
+                info[i].exec_mode = -1;
+            // other threads will stay waiting at exec_mode == 0
+            // waiting to be release by prev thread
         }
     }
+
+    // wait for all threads to complete
+    for (int i = 0; i < online_threads; i++)
+        pthread_join(threads[i], NULL);
+
 
     printf("Thread       Start       Encryption\n");
     for (int i = 0; i < n; ++i) {
+        int thread_number = (i % max_threads) + 1;
         printf("%d           %s          %s\n",
-            info[i].id, info[i].task.name.c_str(), info[i].out_hex);
+            thread_number, tasks[i].name.c_str(), results[i].c_str());
     }
 
     return 0;
