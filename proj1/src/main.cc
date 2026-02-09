@@ -24,7 +24,6 @@
 // static int that corresponds to the max k threads the user selected
 static int max_threads;
 
-
 // struct to store the input from the file
 struct Task {
     // this id is given by input file (different from id in thread_info struct ** but should be equal)
@@ -67,7 +66,7 @@ void *worker(void *arg) {
 
     // threads with negative exec_mode must exit immediately
     if (info->exec_mode < 0) {
-        printf("[thread %d] returned\n", info->id);
+        ThreadLog("[thread %d] returned\n", info->id);
         return NULL;
     }
 
@@ -88,6 +87,11 @@ void *worker(void *arg) {
         if (Timings_NowMs() - start_time > info->timeout_ms) {
             ThreadLog("[thread %d] timeout\n", info->id);
             ThreadLog("[thread %d] returned\n", info->id);
+
+            // release next if exec_mode == thread
+            if (info->exec_mode == 3 && info->next_thread != NULL)
+                info->next_thread->exec_mode = 3;
+
             return NULL;
         }
 
@@ -109,7 +113,7 @@ void *worker(void *arg) {
 
     }
 
-    // release next
+    // release next if exec_mode == 3
     if (info->exec_mode == 3 && info->next_thread != NULL)
         info->next_thread->exec_mode = 3;
 
