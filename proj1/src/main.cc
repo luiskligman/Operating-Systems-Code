@@ -1,19 +1,23 @@
+// Copyright 2026 Luis Kligman
+
+// Portable Operating System Interface (POSIX)
+#include <unistd.h>
+
+// C Headers
+#include <pthread.h>
+#include <stdint.h>
+
+// C++ Headers
+#include <string>
+#include <fstream>
+#include <iostream>
+#include <vector>
+
 #include "../lib/cli_parser.h"
 #include "../lib/error.h"
 #include "../lib/sha256.h"
 #include "../lib/thread_log.h"
 #include "../lib/timings.h"
-
-#include <string>
-#include <pthread.h>
-#include <fstream>
-#include <iostream>
-#include <vector>
-#include <stdint.h>
-
-// Portable Operating System Interface (POSIX)
-#include <unistd.h>
-
 
 /*  Example Interaction
  * ./proj1 --all --timeout 3000 < data/small.txt
@@ -26,7 +30,8 @@ static int max_threads;
 
 // struct to store the input from the file
 struct Task {
-    // this id is given by input file (different from id in thread_info struct ** but should be equal)
+    // this id is given by input file
+    // (different from id in thread_info struct ** but should be equal)
     std::string id;
     std::string name;
     int amount;
@@ -60,7 +65,6 @@ void *worker(void *arg) {
 
     // threads in thread pool must sleep until exec_mode != 0
     while (info->exec_mode == 0) {
-        //printf("slept\n");
         Timings_SleepMs(1);
     }
 
@@ -80,7 +84,6 @@ void *worker(void *arg) {
     // thread i (1-indexed) processes rows: i-1, (i-1)+k, (i-1)+2k
     // treat the task array as 0 indexed
     for (int r = 0; r * info->max_threads + thread_index < info->nrows; r++) {
-
         const int row_index = thread_index + r * info->max_threads;
 
         // Check timeout before processing each row
@@ -110,7 +113,6 @@ void *worker(void *arg) {
         info->results[row_index] = hex_output;
 
         ThreadLog("[thread %d] completed row %d\n", info->id, row_index);
-
     }
 
     // release next if exec_mode == 3
@@ -123,8 +125,8 @@ void *worker(void *arg) {
 
 int main(int argc, char *argv[]) {
     // figure out how many online threads the host computer currently has
-    long online_threads = sysconf(_SC_NPROCESSORS_ONLN);
-    printf("online threads: %ld\n", online_threads);
+    int16_t online_threads = sysconf(_SC_NPROCESSORS_ONLN);
+    ThreadLog("online threads: %ld\n", online_threads);
 
     // create two separate vectors the size of the number of online_threads
     // keep track of threads and accompanying info
@@ -135,10 +137,11 @@ int main(int argc, char *argv[]) {
     CliMode mode;
     uint32_t timeout_ms;  // default timeout is 5,000 (5s)
     CliParse(argc, argv, &mode, &timeout_ms);
-    printf("mode: %u, timeout: %d\n", mode, timeout_ms);
+    ThreadLog("mode: %u, timeout: %d\n", mode, timeout_ms);
 
 
-    // capture the number of tasks which is the first row in the piped input file
+    // capture the number of tasks which is the first
+    // row in the piped input file
     int n;
     std::cin >> n;
 
@@ -156,9 +159,10 @@ int main(int argc, char *argv[]) {
         std::cin >> tasks[i].id >> tasks[i].name >> tasks[i].amount;
     }
 
-    // after reading all the input from STDIN (via I/O redirect from a file), prompts the user
+    // after reading all the input from STDIN
+    // (via I/O redirect from a file), prompts the user
     // (via dev/tty) for a number, k, of threads to use for this execution
-    printf("Enter max threads (1 - %ld): \n", online_threads);
+    ThreadLog("Enter max threads (1 - %ld): \n", online_threads);
     std::ifstream tty_in("/dev/tty");
     if (tty_in) {
         tty_in >> max_threads;
@@ -192,8 +196,9 @@ int main(int argc, char *argv[]) {
             if (i < max_threads && i < n) {
                 info[i].exec_mode = 2;
                 Timings_SleepMs(1);
-            } else
+            } else {
                 info[i].exec_mode = -1;
+            }
         }
     } else if (mode == 2) {  // --thread: each thread releases the next
         // Release only the first thread; it will release the next
@@ -212,10 +217,10 @@ int main(int argc, char *argv[]) {
         pthread_join(threads[i], NULL);
 
 
-    printf("Thread       Start       Encryption\n");
+    ThreadLog("Thread       Start       Encryption\n");
     for (int i = 0; i < n; ++i) {
         int thread_number = (i % max_threads) + 1;
-        printf("%d           %s          %s\n",
+        ThreadLog("%d           %s          %s\n",
             thread_number, tasks[i].name.c_str(), results[i].c_str());
     }
 
