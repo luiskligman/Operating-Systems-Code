@@ -70,11 +70,11 @@ void *worker(void *arg) {
 
     // threads with negative exec_mode must exit immediately
     if (info->exec_mode < 0) {
-        ThreadLog("[thread %d] returned\n", info->id);
+        ThreadLog("[thread %d] returned", info->id);
         return NULL;
     }
 
-    ThreadLog("[thread %d] started\n", info->id);
+    ThreadLog("[thread %d] started", info->id);
 
     // record when thread starts work
     uint64_t start_time = Timings_NowMs();
@@ -88,8 +88,8 @@ void *worker(void *arg) {
 
         // Check timeout before processing each row
         if (Timings_NowMs() - start_time > info->timeout_ms) {
-            ThreadLog("[thread %d] timeout\n", info->id);
-            ThreadLog("[thread %d] returned\n", info->id);
+            ThreadLog("[thread %d] timeout", info->id);
+            ThreadLog("[thread %d] returned", info->id);
 
             // release next if exec_mode == thread
             if (info->exec_mode == 3 && info->next_thread != NULL)
@@ -112,21 +112,21 @@ void *worker(void *arg) {
 
         info->results[row_index] = hex_output;
 
-        ThreadLog("[thread %d] completed row %d\n", info->id, row_index);
+        ThreadLog("[thread %d] completed row %d", info->id, row_index);
     }
 
     // release next if exec_mode == 3
     if (info->exec_mode == 3 && info->next_thread != NULL)
         info->next_thread->exec_mode = 3;
 
-    ThreadLog("[thread %d] returned\n", info->id);
+    ThreadLog("[thread %d] returned", info->id);
     return NULL;
 }
 
 int main(int argc, char *argv[]) {
     // figure out how many online threads the host computer currently has
     int16_t online_threads = sysconf(_SC_NPROCESSORS_ONLN);
-    ThreadLog("online threads: %ld\n", online_threads);
+    ThreadLog("online threads: %ld", online_threads);
 
     // create two separate vectors the size of the number of online_threads
     // keep track of threads and accompanying info
@@ -137,7 +137,7 @@ int main(int argc, char *argv[]) {
     CliMode mode;
     uint32_t timeout_ms;  // default timeout is 5,000 (5s)
     CliParse(argc, argv, &mode, &timeout_ms);
-    ThreadLog("mode: %u, timeout: %d\n", mode, timeout_ms);
+    ThreadLog("mode: %u, timeout: %d", mode, timeout_ms);
 
 
     // capture the number of tasks which is the first
@@ -147,6 +147,9 @@ int main(int argc, char *argv[]) {
 
     // create a vector of results
     std::vector<std::string> results(n);
+    for (int i = 0; i < n; ++i) {
+        results[i] = "thread not finished";
+    }
 
     // create a vector of tasks
     std::vector<Task> tasks(n);
@@ -157,15 +160,6 @@ int main(int argc, char *argv[]) {
     // take row input from the piped input file
     for (int i=0; i < n; ++i) {
         std::cin >> tasks[i].id >> tasks[i].name >> tasks[i].amount;
-    }
-
-    // after reading all the input from STDIN
-    // (via I/O redirect from a file), prompts the user
-    // (via dev/tty) for a number, k, of threads to use for this execution
-    ThreadLog("Enter max threads (1 - %ld): \n", online_threads);
-    std::ifstream tty_in("/dev/tty");
-    if (tty_in) {
-        tty_in >> max_threads;
     }
 
     // initialize all threads with shared data
@@ -181,6 +175,15 @@ int main(int argc, char *argv[]) {
         info[i].next_thread = (i + 1 < online_threads ? &info[i + 1] : NULL);
 
         pthread_create(&threads[i], NULL, worker, &info[i]);
+    }
+
+    // after reading all the input from STDIN
+    // (via I/O redirect from a file), prompts the user
+    // (via dev/tty) for a number, k, of threads to use for this execution
+    ThreadLog("Enter max threads (1 - %ld): ", online_threads);
+    std::ifstream tty_in("/dev/tty");
+    if (tty_in) {
+        tty_in >> max_threads;
     }
 
     // release the threads depending on the chosen mode
@@ -217,10 +220,10 @@ int main(int argc, char *argv[]) {
         pthread_join(threads[i], NULL);
 
 
-    ThreadLog("Thread       Start       Encryption\n");
+    ThreadLog("Thread       Start       Encryption");
     for (int i = 0; i < n; ++i) {
         int thread_number = (i % max_threads) + 1;
-        ThreadLog("%d           %s          %s\n",
+        ThreadLog("%d           %s          %s",
             thread_number, tasks[i].name.c_str(), results[i].c_str());
     }
 
