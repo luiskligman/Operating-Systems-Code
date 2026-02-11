@@ -54,7 +54,6 @@ struct Thread_info {
     std::string* results;  // pointer to results array
 
     uint32_t timeout_ms;
-    uint64_t start_time_ms;
 
     Thread_info* next_thread;
 };
@@ -154,8 +153,6 @@ int main(int argc, char *argv[]) {
     // create a vector of tasks
     std::vector<Task> tasks(n);
 
-    // record global start time
-    uint64_t global_start = Timings_NowMs();
 
     // take row input from the piped input file
     for (int i=0; i < n; ++i) {
@@ -163,15 +160,13 @@ int main(int argc, char *argv[]) {
     }
 
     // initialize all threads with shared data
-    for (int i = 0; i < online_threads; i++) {
+    for (int i = 0; i < online_threads; ++i) {
         info[i].id = i + 1;
         info[i].exec_mode = 0;
-        info[i].max_threads = max_threads;
         info[i].nrows = n;
         info[i].tasks = tasks.data();  // pointer to task 0 in the array
         info[i].results = results.data();  // pointer to result 0 in the array
         info[i].timeout_ms = timeout_ms;
-        info[i].start_time_ms = global_start;
         info[i].next_thread = (i + 1 < online_threads ? &info[i + 1] : NULL);
 
         pthread_create(&threads[i], NULL, worker, &info[i]);
@@ -186,16 +181,35 @@ int main(int argc, char *argv[]) {
         tty_in >> max_threads;
     }
 
+    if (max_threads < 1 || max_threads > online_threads) {
+        ThreadLog("Improper value given (failed successfully)");
+        // tell threads to terminate
+        for (int i = 0; i < online_threads; ++i) {
+            info[i].exec_mode = -1;
+        }
+
+        // wait for threads to terminate
+        for (int i = 0; i < online_threads; ++i) {
+            pthread_join(threads[i], NULL);
+        }
+        return 0;
+    }
+
+    // update the max_threads given by the user for all threads
+    for (int i = 0; i < online_threads; ++i) {
+        info[i].max_threads = max_threads;
+    }
+
     // release the threads depending on the chosen mode
     if (mode == 0) {  // --all: release all max_threads at once
-        for (int i = 0; i < online_threads; i++) {
+        for (int i = 0; i < online_threads; ++i) {
             if (i < max_threads && i < n)
                 info[i].exec_mode = 1;
             else
                 info[i].exec_mode = -1;
         }
     } else if (mode == 1) {  // --rate: release on thread per millisecond
-        for (int i = 0; i < online_threads; i++) {
+        for (int i = 0; i < online_threads; ++i) {
             if (i < max_threads && i < n) {
                 info[i].exec_mode = 2;
                 Timings_SleepMs(1);
@@ -205,7 +219,7 @@ int main(int argc, char *argv[]) {
         }
     } else if (mode == 2) {  // --thread: each thread releases the next
         // Release only the first thread; it will release the next
-        for (int i = 0; i < online_threads; i++) {
+        for (int i = 0; i < online_threads; ++i) {
             if (i == 0 && i < max_threads && i < n)
                 info[i].exec_mode = 3;
             else if (i >= max_threads || i >= n)
@@ -216,7 +230,7 @@ int main(int argc, char *argv[]) {
     }
 
     // wait for all threads to complete
-    for (int i = 0; i < online_threads; i++)
+    for (int i = 0; i < online_threads; ++i)
         pthread_join(threads[i], NULL);
 
 
